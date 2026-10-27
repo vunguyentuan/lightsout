@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Lights Out</title>
+    <link>https://lightsout.madebyvu.com/appcast.xml</link>
+    <item>
+      <title>Lights Out 1.0.0</title>
+      <pubDate>Tue, 27 Oct 2026 05:32:31 +0000</pubDate>
+      <sparkle:version>1</sparkle:version>
+      <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <sparkle:fullReleaseNotesLink>https://github.com/vunguyentuan/lightsout/releases</sparkle:fullReleaseNotesLink>
+      <description sparkle:format="markdown"><![CDATA[
+- Keeps your Mac awake and its session unlocked, so UI-automation agents keep working through the night.
+- Lights Out turns every screen black and the backlight off (built-in, Apple and DDC monitors), while screenshots and screen recordings still see the real desktop.
+- Moving the real mouse or pressing a key brings the screen back; input from agents doesn't.
+- Goes dark on its own after a few minutes without you, toggles with ⌃⌥⌘L, and takes `lightsout://` commands from scripts.
+]]></description>
+      <enclosure url="https://github.com/vunguyentuan/lightsout/releases/download/v1.0.0/LightsOut.dmg" type="application/octet-stream" sparkle:edSignature="JdnHLtytclvL2uskvkLsZvnvw4644RFV7uaqJ54Vh5w6MU1D6P3ipvvxlWTrto0XjGu8Q+/EMlm8Lj5hruz1Dw==" length="1716644" />
+    </item>
+  </channel>
+</rss>
