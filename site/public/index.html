@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lights Out — Screen Off, Mac Awake</title>
+<meta name="description" content="Lights Out is a free, open-source Mac menu-bar app that keeps your Mac awake and unlocked for UI-automation agents while the screen is dark and the backlight is off.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Lights Out — Screen off. Mac awake.">
+<meta property="og:description" content="Keep your Mac unlocked for AI agents and UI automation while the screen stays dark. Screenshots still see the real desktop.">
+<meta property="og:image" content="https://lightsout.madebyvu.com/assets/og-image.png">
+<meta property="og:url" content="https://lightsout.madebyvu.com/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="assets/favicon.png">
+<style>
+  :root {
+    --bg: #ffffff;
+    --text: #111111;
+    --muted: #6b6b6b;
+    --faint: #a3a3a3;
+    --line: #e9e9e9;
+    --soft: #f5f5f4;
+    --moon: #e8b93a;
+    --live: #1f9d55;
+    --menu-bg: rgba(246, 246, 246, 0.92);
+    --menu-text: #1d1d1f;
+    --menu-dim: #8a8a8e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0b0c;
+      --text: #f2f2f2;
+      --muted: #9a9a9a;
+      --faint: #5f5f5f;
+      --line: #222224;
+      --soft: #151516;
+      --moon: #ffd873;
+      --live: #4ee38a;
+      --menu-bg: rgba(40, 40, 42, 0.94);
+      --menu-text: #f2f2f2;
+      --menu-dim: #8e8e93;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  code { font: 0.92em ui-monospace, "SF Mono", Menlo, monospace; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+
+  nav .wrap { display: flex; align-items: center; height: 64px; gap: 28px; font-size: 14px; }
+  nav .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 15px; text-decoration: none; }
+  nav .brand img { width: 22px; height: 22px; }
+  nav .spacer { flex: 1; }
+  nav a.link { color: var(--muted); text-decoration: none; }
+  nav a.link:hover { color: var(--text); }
+
+  .button {
+    display: inline-block; padding: 11px 20px; border-radius: 8px;
+    background: var(--text); color: var(--bg); text-decoration: none; font-weight: 500;
+  }
+  .button:hover { opacity: 0.85; }
+  .button.small { padding: 7px 14px; font-size: 14px; }
+  .arrow-link { color: var(--text); text-decoration: none; font-weight: 500; }
+  .arrow-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+  .hero { padding: 88px 0 36px; text-align: center; }
+  .eyebrow { font-size: 13px; color: var(--muted); letter-spacing: 0.02em; margin: 0 0 18px; }
+  h1 { font-size: clamp(40px, 6.4vw, 64px); line-height: 1.05; letter-spacing: -0.04em; font-weight: 600; margin: 0; }
+  .lede { font-size: 19px; color: var(--muted); max-width: 580px; margin: 22px auto 0; }
+  .actions { display: flex; gap: 24px; justify-content: center; align-items: center; flex-wrap: wrap; margin-top: 34px; }
+  .note { font-size: 13px; color: var(--faint); margin-top: 18px; }
+
+  /* Two monitors: what the room sees vs. what the agent sees. */
+  .stage { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; padding: 36px 0 28px; }
+  .stage figure { margin: 0; text-align: center; }
+  .stage figcaption { margin-top: 14px; font-size: 14px; color: var(--muted); }
+  .stage figcaption b { color: var(--text); font-weight: 600; }
+  .monitor {
+    position: relative; aspect-ratio: 16 / 10; border-radius: 12px; overflow: hidden;
+    border: 7px solid #1c1c1e; box-shadow: 0 1px 0 var(--line), 0 18px 40px -24px rgba(0, 0, 0, 0.45);
+  }
+  .stand { width: 22%; height: 18px; margin: 0 auto; background: linear-gradient(#2a2a2c, #1c1c1e); clip-path: polygon(18% 0, 82% 0, 100% 100%, 0 100%); }
+  .monitor.off { background: #000; }
+  .monitor.off .led {
+    position: absolute; right: 12px; bottom: 10px; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--live); box-shadow: 0 0 8px var(--live); animation: breathe 3.2s ease-in-out infinite;
+  }
+  .monitor.off .zzz { position: absolute; inset: 0; display: grid; place-items: center; color: #1a1a1c; font-size: 13px; letter-spacing: 0.3em; }
+  .desk { position: absolute; inset: 0; background: linear-gradient(160deg, #3b4a7a, #1d2340 55%, #2c1f3d); }
+  .desk .bar { height: 7%; background: rgba(255, 255, 255, 0.18); }
+  .win { position: absolute; background: #f7f7f8; border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); overflow: hidden; }
+  .win::before { content: ""; display: block; height: 14%; background: #e4e4e7; }
+  .win i { display: block; height: 6%; margin: 7% 9% 0; border-radius: 3px; background: #d4d4d8; }
+  .win i:nth-child(2) { width: 60%; }
+  .win i.go { width: 34%; height: 11%; background: #2f6fec; }
+  .w1 { left: 7%; top: 16%; width: 50%; height: 64%; }
+  .w2 { left: 46%; top: 30%; width: 46%; height: 56%; }
+  .cursor { position: absolute; width: 18px; height: 18px; left: 64%; top: 70%; animation: drive 6s ease-in-out infinite; }
+  .cursor::after {
+    content: ""; position: absolute; left: -8px; top: -8px; width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.9); opacity: 0; animation: click 6s ease-out infinite;
+  }
+  @keyframes drive { 0%, 100% { left: 64%; top: 70%; } 30% { left: 52%; top: 75%; } 45%, 60% { left: 55%; top: 77%; } 80% { left: 30%; top: 40%; } }
+  @keyframes click { 0%, 46% { opacity: 0; transform: scale(0.4); } 50% { opacity: 1; transform: scale(1); } 60%, 100% { opacity: 0; transform: scale(1.6); } }
+  @keyframes breathe { 50% { opacity: 0.35; } }
+
+  section { padding: 72px 0; border-top: 1px solid var(--line); }
+  .label { font-size: 13px; color: var(--muted); margin: 0 0 28px; }
+  h2 { font-size: clamp(26px, 3.6vw, 34px); line-height: 1.15; letter-spacing: -0.03em; font-weight: 600; margin: 0 0 12px; }
+  .intro { color: var(--muted); max-width: 580px; margin: 0 0 40px; }
+
+  .numbers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px; }
+  .numbers b { display: block; font-size: 40px; font-weight: 600; letter-spacing: -0.04em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .numbers span { display: block; color: var(--muted); font-size: 14px; margin-top: 8px; }
+
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px 32px; }
+  .features h3 { font-size: 16px; font-weight: 600; margin: 0 0 6px; }
+  .features p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+  .split .intro { margin-bottom: 0; }
+  .split .features { grid-template-columns: 1fr; gap: 22px; margin-top: 32px; }
+
+  /* The real menu, item for item. */
+  .menu {
+    justify-self: center; width: 100%; max-width: 360px; padding: 5px; border-radius: 10px;
+    background: var(--menu-bg); color: var(--menu-text); font-size: 13.5px; line-height: 1;
+    border: 1px solid var(--line); box-shadow: 0 22px 50px -20px rgba(0, 0, 0, 0.35);
+  }
+  .menu div { display: flex; align-items: center; gap: 4px; padding: 6px 10px 6px 8px; border-radius: 5px; white-space: nowrap; }
+  .menu div::before { content: ""; width: 16px; flex: none; text-align: center; font-size: 12px; }
+  .menu .on::before { content: "✓"; }
+  .menu .dim { color: var(--menu-dim); }
+  .menu .hi { background: #2f6fec; color: #fff; }
+  .menu kbd, .menu .more { margin-left: auto; padding-left: 18px; font: inherit; color: var(--menu-dim); }
+  .menu .hi kbd { color: rgba(255, 255, 255, 0.8); }
+  .menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 10px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  td { padding: 14px 0; border-top: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: 1px solid var(--line); }
+  td:first-child { width: 190px; font-weight: 600; padding-right: 16px; }
+  td:last-child { color: var(--muted); }
+
+  pre {
+    margin: 0; padding: 18px 20px; border-radius: 10px; background: var(--soft); border: 1px solid var(--line);
+    font: 14px/1.7 ui-monospace, "SF Mono", Menlo, monospace; overflow-x: auto;
+  }
+  pre .c { color: var(--faint); }
+  .split pre { align-self: start; font-size: 13px; }
+  .download { text-align: center; }
+  .download .intro { margin: 0 auto 32px; }
+
+  footer { border-top: 1px solid var(--line); padding: 28px 0 44px; font-size: 13px; color: var(--muted); }
+  footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cursor, .cursor::after, .monitor.off .led { animation: none; }
+  }
+  @media (max-width: 760px) {
+    nav a.link { display: none; }
+    .hero { padding-top: 56px; }
+    .stage { grid-template-columns: 1fr; gap: 28px; }
+    .numbers { grid-template-columns: repeat(2, 1fr); gap: 28px 20px; }
+    .features { grid-template-columns: 1fr; gap: 28px; }
+    .split { grid-template-columns: 1fr; gap: 32px; }
+    td:first-child { width: 120px; }
+    section { padding: 56px 0; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#"><img src="assets/icon-512.webp" alt="" width="22" height="22">Lights Out</a>
+    <span class="spacer"></span>
+    <a class="link" href="#how">How it works</a>
+    <a class="link" href="#agents">For agents</a>
+    <a class="link" href="#faq">FAQ</a>
+    <a class="link" href="https://github.com/vunguyentuan/lightsout">GitHub</a>
+    <a class="button small" href="https://github.com/vunguyentuan/lightsout/releases/latest/download/LightsOut.dmg">Download</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Free for Mac · Open source</p>
+    <h1>Screen off.<br>Mac awake.</h1>
+    <p class="lede">Lights Out keeps your Mac unlocked for AI agents and UI automation while the screen is dark and the backlight is off. Your agents keep clicking. Your room stays dark.</p>
+    <div class="actions">
+      <a class="button" href="https://github.com/vunguyentuan/lightsout/releases/latest/download/LightsOut.dmg">Download for Mac</a>
+      <a class="arrow-link" href="https://github.com/vunguyentuan/lightsout">View source →</a>
+    </div>
+    <p class="note">macOS 14 or later · Apple Silicon · Notarized by Apple · Menu-bar app</p>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="stage" role="img" aria-label="Two monitors side by side. The first is completely black with a small green light: what the room sees. The second shows a desktop with two windows and a cursor clicking a button: what an automation agent's screenshot sees, at the same moment.">
+    <figure>
+      <div class="monitor off"><span class="zzz">LIGHTS OUT</span><span class="led"></span></div>
+      <div class="stand"></div>
+      <figcaption><b>What your room sees.</b> Black pixels, backlight at zero.</figcaption>
+    </figure>
+    <figure>
+      <div class="monitor"><div class="desk">
+        <div class="bar"></div>
+        <div class="win w1"><i></i><i></i><i></i></div>
+        <div class="win w2"><i></i><i></i><i class="go"></i></div>
+        <svg class="cursor" viewBox="0 0 18 18" aria-hidden="true"><path d="M2 1l12 8-5.2 1.2L11.6 16l-2.4 1-2.8-5.8L2 15z" fill="#000" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>
+      </div></div>
+      <div class="stand"></div>
+      <figcaption><b>What your agent sees.</b> The live, unlocked desktop.</figcaption>
+    </figure>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <p class="label">Measured on an M4 Pro MacBook Pro driving an LG 27UP850, display sleep set to 10 minutes and “require password immediately”</p>
+    <div class="numbers">
+      <div><b>0%</b><span>monitor backlight while dark, set over DDC and restored after</span></div>
+      <div><b>100%</b><span>of the desktop still in screenshots taken in the dark</span></div>
+      <div><b>11 min</b><span>idle past display sleep, and still unlocked</span></div>
+      <div><b>0</b><span>permissions needed to keep awake, go dark and wake on the mouse</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2>Off for you. On for macOS.</h2>
+    <p class="intro">Let the display sleep and macOS locks you out. Keep it awake and it lights up the room all night. Lights Out separates the two.</p>
+    <table>
+      <tr><td>Never idles into a lock</td><td>A “prevent display sleep” power assertion means macOS never starts the screen saver or the display-sleep lock, even with “require password immediately”.</td></tr>
+      <tr><td>Turns off the light</td><td>Every display's gamma table goes to black and the backlight to zero: DisplayServices for built-in and Apple displays, DDC/CI for external monitors.</td></tr>
+      <tr><td>Agents still see</td><td>Gamma is applied after the framebuffer, so screenshots and screen recordings get the real desktop.</td></tr>
+      <tr><td>Knows you from your agent</td><td>Events posted by software carry the sender's process ID; real hardware carries none. Your mouse or keyboard wakes the screen. Your agent's clicks don't.</td></tr>
+      <tr><td>Cleans up after itself</td><td>macOS restores gamma the instant the app quits, even on a crash. Backlight levels are restored on quit, or on the next launch.</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap split">
+    <div>
+      <h2>Lives in your menu bar.</h2>
+      <p class="intro">No windows, no setup. Turn it on and walk away.</p>
+      <div class="features">
+        <div><h3>Auto lights out</h3><p>Goes dark after 1 to 60 minutes without you, the way display sleep would, minus the lock.</p></div>
+        <div><h3>⌃⌥⌘L from anywhere</h3><p>Lights off when you leave, back on when you return. No permission needed.</p></div>
+        <div><h3>Keyboard wake, optional</h3><p>Grant Accessibility and a key press brings the screen back too. Without it, the mouse and trackpad do.</p></div>
+        <div><h3>Managed Macs</h3><p>If a device policy forces a screen saver on the input idle timer, Simulate Activity holds it off.</p></div>
+      </div>
+    </div>
+    <div class="menu" role="img" aria-label="The Lights Out menu">
+      <div class="dim">Awake &amp; unlocked · screen on</div>
+      <div class="dim">No physical input for 4m 12s</div>
+      <hr>
+      <div class="on">Keep Mac Awake &amp; Unlocked</div>
+      <div class="hi">Lights Out Now<kbd>⌃⌥⌘L</kbd></div>
+      <div>Auto Lights Out<span class="more">›</span></div>
+      <hr>
+      <div class="on">Wake Screen on Physical Mouse/Keyboard</div>
+      <div class="on">Turn Off Backlight Too</div>
+      <div>Simulate Activity (Managed Macs)</div>
+      <hr>
+      <div class="on">Launch at Login</div>
+      <div>Check for Updates…</div>
+      <div>How It Works…</div>
+      <div>Quit Lights Out<kbd>⌘Q</kbd></div>
+    </div>
+  </div>
+</section>
+
+<section id="agents">
+  <div class="wrap split">
+    <div>
+      <h2>Made for agents.</h2>
+      <p class="intro">Computer-use agents, AppleScript, Accessibility automation and UI test runners need an unlocked session and a screen they can capture. They get both, and you get a dark room. Agents can drive Lights Out too.</p>
+    </div>
+    <pre><span class="c"># before a long unattended run</span>
+open -g lightsout://awake/on
+open -g lightsout://dark
+
+<span class="c"># show the screen again</span>
+open -g lightsout://light
+
+<span class="c"># also: lightsout://toggle, lightsout://awake/off</span></pre>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <h2>Good to know.</h2>
+    <p class="intro">Lights Out keeps your session unlocked on purpose, so think about where you use it.</p>
+    <div class="features">
+      <div><h3>It's unlocked</h3><p>Anyone who touches the mouse gets your desktop. Use it at home or somewhere you trust, not in a shared office.</p></div>
+      <div><h3>Lid closed</h3><p>A closed MacBook with no external display sleeps no matter what. With an external display and power, it keeps going.</p></div>
+      <div><h3>External monitors</h3><p>The backlight turns off when the monitor supports DDC/CI. Otherwise the pixels are still black, but an LCD's backlight stays on.</p></div>
+      <div><h3>Manual lock still locks</h3><p>⌃⌘Q and Lock Screen work as usual. Lights Out only stops <em>idle</em> locking.</p></div>
+      <div><h3>Private</h3><p>No accounts, no analytics. The only network request is the Sparkle update check.</p></div>
+      <div><h3>Light on energy</h3><p>A native Swift app that wakes every few seconds to keep the screen dark, and otherwise does nothing.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap split">
+    <div>
+      <h2>Open source.</h2>
+      <p class="intro">Lights Out is free software under the GPL-3.0. Read the code, report an issue, or build it yourself with Xcode.</p>
+    </div>
+    <pre>git clone https://github.com/vunguyentuan/lightsout
+cd lightsout
+make run</pre>
+  </div>
+</section>
+
+<section class="download">
+  <div class="wrap">
+    <h2>Get Lights Out.</h2>
+    <p class="intro">Free. Requires macOS 14 Sonoma or later on Apple Silicon.</p>
+    <a class="button" href="https://github.com/vunguyentuan/lightsout/releases/latest/download/LightsOut.dmg">Download for Mac</a>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 Vu Nguyen · <a href="https://github.com/vunguyentuan/lightsout/blob/main/LICENSE">GPL-3.0</a></span>
+    <span>More from <a href="https://squish.madebyvu.com">Squish</a>, an image and video optimizer for Mac.</span>
+  </div>
+</footer>
+
+</body>
+</html>

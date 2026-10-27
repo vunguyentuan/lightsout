@@ -87,8 +87,7 @@ enum DDC {
     static func read(_ monitor: Monitor, vcp: UInt8) -> (current: Int, max: Int)? {
         guard let readFn, let writeFn else { return nil }
         for _ in 0..<4 {
-            var request: [UInt8] = [0x82, 0x01, vcp, 0]
-            request[3] = checksum(request[0..<3])
+            var request = getRequest(vcp: vcp)
             // Some monitors (e.g. LG) answer a single request with a DDC null message; sending it twice is reliable.
             var wrote = kIOReturnSuccess
             for _ in 0..<2 {
@@ -108,12 +107,8 @@ enum DDC {
                 readFn(monitor.service, chipAddress, hostAddress, $0.baseAddress!, UInt32($0.count))
             }
             guard read == kIOReturnSuccess else { continue }
-
-            // VCP feature reply: 02 <result=00> <vcp> <type> <maxHi> <maxLo> <curHi> <curLo>
-            if let i = (0...(reply.count - 8)).first(where: { reply[$0] == 0x02 && reply[$0 + 1] == 0x00 && reply[$0 + 2] == vcp }) {
-                let max = Int(reply[i + 4]) << 8 | Int(reply[i + 5])
-                let current = Int(reply[i + 6]) << 8 | Int(reply[i + 7])
-                return (current, max)
+            if let reading = parseReply(reply, vcp: vcp) {
+                return reading
             }
         }
         return nil
@@ -122,8 +117,7 @@ enum DDC {
     @discardableResult
     static func write(_ monitor: Monitor, vcp: UInt8, value: Int) -> Bool {
         guard let writeFn else { return false }
-        var packet: [UInt8] = [0x84, 0x03, vcp, UInt8((value >> 8) & 0xFF), UInt8(value & 0xFF), 0]
-        packet[5] = checksum(packet[0..<5])
+        var packet = setRequest(vcp: vcp, value: value)
         var succeeded = false
         // Monitors occasionally drop a write; sending it twice is the usual remedy.
         for _ in 0..<2 {
@@ -134,6 +128,33 @@ enum DDC {
             usleep(30_000)
         }
         return succeeded
+    }
+
+    // MARK: - Packets
+
+    /// "Get VCP Feature" request.
+    static func getRequest(vcp: UInt8) -> [UInt8] {
+        var packet: [UInt8] = [0x82, 0x01, vcp, 0]
+        packet[3] = checksum(packet[0..<3])
+        return packet
+    }
+
+    /// "Set VCP Feature" request.
+    static func setRequest(vcp: UInt8, value: Int) -> [UInt8] {
+        var packet: [UInt8] = [0x84, 0x03, vcp, UInt8((value >> 8) & 0xFF), UInt8(value & 0xFF), 0]
+        packet[5] = checksum(packet[0..<5])
+        return packet
+    }
+
+    /// Finds the VCP feature reply `02 <result=00> <vcp> <type> <maxHi> <maxLo> <curHi> <curLo>` in a raw read.
+    /// Returns nil for null messages and error results.
+    static func parseReply(_ reply: [UInt8], vcp: UInt8) -> (current: Int, max: Int)? {
+        guard reply.count >= 8,
+              let i = (0...(reply.count - 8)).first(where: { reply[$0] == 0x02 && reply[$0 + 1] == 0x00 && reply[$0 + 2] == vcp })
+        else { return nil }
+        let max = Int(reply[i + 4]) << 8 | Int(reply[i + 5])
+        let current = Int(reply[i + 6]) << 8 | Int(reply[i + 7])
+        return (current, max)
     }
 
     private static func checksum(_ bytes: ArraySlice<UInt8>) -> UInt8 {

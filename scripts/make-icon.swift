@@ -27,11 +27,13 @@ func render(size: Int) -> Data {
     let moon = NSBezierPath(ovalIn: NSRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2))
     let bite = NSBezierPath(ovalIn: NSRect(x: center.x - r * 0.35, y: center.y - r * 0.6, width: r * 2, height: r * 2))
     NSGraphicsContext.current?.saveGraphicsState()
-    moon.addClip()
+    // Clip to everything outside the bite (even-odd), so the background shows through instead of a hole.
+    let outsideBite = NSBezierPath(rect: body)
+    outsideBite.append(bite)
+    outsideBite.windingRule = .evenOdd
+    outsideBite.addClip()
     NSColor(red: 1.0, green: 0.86, blue: 0.45, alpha: 1).setFill()
     moon.fill()
-    NSGraphicsContext.current?.compositingOperation = .clear
-    bite.fill()
     NSGraphicsContext.current?.restoreGraphicsState()
 
     // A small green "still working" light.

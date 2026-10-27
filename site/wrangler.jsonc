@@ -1,0 +1,12 @@
+{
+  // Static landing page and Sparkle appcast for Lights Out, served by Cloudflare Workers static assets.
+  "name": "lightsout",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./public"
+  },
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "lightsout.madebyvu.com", "custom_domain": true }
+  ]
+}

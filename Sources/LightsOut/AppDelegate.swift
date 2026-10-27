@@ -22,10 +22,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         darkener.recoverFromPreviousRun()
+        _ = Updater.shared
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         let menu = NSMenu()
         menu.delegate = self
+        menu.autoenablesItems = false
         statusItem.menu = menu
 
         awake.setActive(settings.keepAwake)
@@ -198,6 +200,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
 
         menu.addItem(item("Launch at Login", #selector(menuToggleLaunchAtLogin), checked: SMAppService.mainApp.status == .enabled))
+        let updates = item("Check for Updates…", #selector(menuCheckForUpdates))
+        updates.isEnabled = Updater.shared.canCheck
+        menu.addItem(updates)
         menu.addItem(item("How It Works…", #selector(menuShowHelp)))
         let quit = NSMenuItem(title: "Quit Lights Out", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quit)
@@ -270,8 +275,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    @objc private func menuCheckForUpdates() {
+        Updater.shared.check()
+    }
+
     @objc private func menuShowHelp() {
-        showAlert("How Lights Out works", """
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+        showAlert("How Lights Out \(version) works", """
         Keep Mac Awake & Unlocked holds a "prevent display sleep" power assertion. Because the display never idles \
         to sleep, macOS never starts the screen saver or the display-sleep lock, so UI automation keeps running.
 

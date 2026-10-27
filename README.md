@@ -3,6 +3,8 @@
 A menu-bar app that keeps your Mac **awake and unlocked** for UI-automation agents while the **screen is dark**,
 so it isn't lighting up the room or spending energy on the backlight.
 
+**[Download for Mac](https://github.com/vunguyentuan/lightsout/releases/latest/download/LightsOut.dmg)** (macOS 14+, Apple Silicon, notarized) · **[Website](https://lightsout.madebyvu.com)**
+
 ## The problem
 
 Agents that drive the UI (computer-use agents, AppleScript/Accessibility automation, test runners) stop working once
@@ -47,15 +49,19 @@ it, and the session stays unlocked past the 10-minute display-sleep timer with "
 
 ## Build
 
-Requires Xcode command-line tools (Swift 5.10+), macOS 14+.
+Requires Xcode 15+ (Swift 5.10+), macOS 14+.
 
-```sh
-./scripts/build.sh            # → build/LightsOut.app
-./scripts/build.sh --install  # → /Applications/LightsOut.app, then launches it
+```
+make run       # build → build/LightsOut.app, then launch
+make install   # copy to /Applications and launch (Launch at Login works best from there)
+make test      # unit tests
+make release   # Developer ID sign + notarize → build/LightsOut.dmg, appcast, Homebrew cask (needs your own certificate and `npm i -g create-dmg`)
+make publish   # GitHub release + deploy the site and Sparkle appcast (notes from release-notes/<version>.md)
 ```
 
-The script signs with your Apple Development / Developer ID identity if one exists, so the Accessibility grant
-survives rebuilds. Override with `SIGN_IDENTITY=...`. Turn on **Launch at Login** from the menu.
+Development builds are signed with your Apple Development certificate when you have one, so the Accessibility grant
+survives rebuilds (override with `DEV_SIGN_IDENTITY=...`). Updates are delivered with Sparkle from
+`lightsout.madebyvu.com/appcast.xml`. The site in `site/` is deployed with Cloudflare Workers static assets.
 
 ## Limitations
 

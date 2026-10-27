@@ -2,3 +2,5 @@
 build/
 .DS_Store
 .swiftpm/
+.wrangler/
+packaging/homebrew/lightsout.rb
