@@ -31,6 +31,8 @@ it, and the session stays unlocked past the 10-minute display-sleep timer with "
 
 - Menu-bar icon: ☕ awake · 🌙 lights out · 💤 inactive.
 - **⌃⌥⌘L** toggles Lights Out from anywhere. No permission needed.
+- **Brightness** sliders in the menu set each display's backlight: built-in and Apple displays through
+  DisplayServices, external monitors over DDC/CI (same requirements as below). They're disabled while dark.
 - From scripts or agents:
 
   ```sh
@@ -38,6 +40,7 @@ it, and the session stays unlocked past the 10-minute display-sleep timer with "
   open -g lightsout://light      # screen on
   open -g lightsout://toggle
   open -g lightsout://awake/on   # or awake/off
+  open -g lightsout://brightness/50   # every display, 0-100 (ignored while dark)
   ```
 
 ### Optional permissions

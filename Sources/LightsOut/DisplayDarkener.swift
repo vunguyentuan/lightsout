@@ -15,7 +15,7 @@ final class DisplayDarkener {
     private var savedBuiltinBrightness: [CGDirectDisplayID: Float] = [:]
     /// Only touched on `ddcQueue`.
     private var savedDDCBrightness: [UInt64: Int] = [:]
-    private let ddcQueue = DispatchQueue(label: "LightsOut.ddc")
+    private let ddcQueue = DDC.queue
     private var enforcer: Timer?
     private var dimsBacklight = false
 

@@ -7,12 +7,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let awake = AwakeController()
     private let darkener = DisplayDarkener()
     private let input = InputWatcher()
+    private let brightness = BrightnessController()
 
     private var statusItem: NSStatusItem!
     private var hotKey: HotKey?
     private var tickTimer: Timer?
     private var signalSources: [DispatchSourceSignal] = []
     private var darkenedAt = Date.distantPast
+    /// Sliders in the open menu, by display ID, so background reads can update them in place.
+    private var brightnessViews: [String: BrightnessSliderView] = [:]
 
     /// Ignore physical input for a moment after going dark, so the hand that clicked the menu doesn't undo it.
     private static let wakeGracePeriod: TimeInterval = 1.5
@@ -34,6 +37,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         input.onPhysicalInput = { [weak self] in self?.physicalInputDetected() }
         input.start()
+
+        brightness.onChange = { [weak self] in self?.brightnessChanged() }
+        brightness.refresh()
 
         hotKey = HotKey(keyCode: kVK_ANSI_L, modifiers: controlKey | optionKey | cmdKey) { [weak self] in
             self?.toggleDark()
@@ -60,7 +66,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         awake.setActive(false)
     }
 
-    /// `lightsout://dark`, `lightsout://light`, `lightsout://toggle`, `lightsout://awake/on`, `lightsout://awake/off`
+    /// `lightsout://dark`, `lightsout://light`, `lightsout://toggle`, `lightsout://awake/on`, `lightsout://awake/off`,
+    /// `lightsout://brightness/<0-100>`
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls where url.scheme?.lowercased() == "lightsout" {
             switch (url.host?.lowercased(), url.path.lowercased()) {
@@ -69,6 +76,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case ("toggle", _): toggleDark()
             case ("awake", "/on"): setKeepAwake(true)
             case ("awake", "/off"): setKeepAwake(false)
+            case ("brightness", let path):
+                guard let percent = Int(path.dropFirst()), (0...100).contains(percent) else {
+                    NSLog("Lights Out: brightness must be 0-100 in \(url)")
+                    continue
+                }
+                setBrightness(Double(percent) / 100)
             default: NSLog("Lights Out: unrecognized URL \(url)")
             }
         }
@@ -110,6 +123,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateIcon()
     }
 
+    private func setBrightness(_ level: Double) {
+        // While dark the backlight is held at zero and restored on wake; changing it now would fight that.
+        guard !darkener.isDark else {
+            NSLog("Lights Out: ignoring brightness change while the screen is off")
+            return
+        }
+        brightness.setAllLevels(level)
+    }
+
+    private func brightnessChanged() {
+        for display in brightness.displays {
+            brightnessViews[display.id]?.level = display.level
+        }
+    }
+
     private func physicalInputDetected() {
         guard darkener.isDark, settings.wakeOnPhysicalInput,
               Date().timeIntervalSince(darkenedAt) > Self.wakeGracePeriod else { return }
@@ -145,6 +173,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func displaysChanged() {
         darkener.displaysChanged()
+        if !darkener.isDark {
+            brightness.refresh()
+        }
     }
 
     // MARK: - Menu
@@ -190,6 +221,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         autoItem.submenu = autoMenu
         menu.addItem(autoItem)
         menu.addItem(.separator())
+
+        brightnessViews.removeAll()
+        if !brightness.displays.isEmpty {
+            menu.addItem(.sectionHeader(title: "Brightness"))
+            for display in brightness.displays {
+                let view = BrightnessSliderView(name: display.name, level: display.level)
+                view.isEnabled = !darkener.isDark
+                view.onChange = { [weak self] level in self?.brightness.setLevel(level, for: display.id) }
+                brightnessViews[display.id] = view
+                let row = NSMenuItem()
+                row.view = view
+                menu.addItem(row)
+            }
+            menu.addItem(.separator())
+        }
+        if !darkener.isDark {
+            // Picks up changes made with the brightness keys or the monitor's own buttons.
+            brightness.refresh()
+        }
 
         menu.addItem(item("Wake Screen on Physical Mouse/Keyboard", #selector(menuToggleWakeOnInput), checked: settings.wakeOnPhysicalInput))
         menu.addItem(item("Turn Off Backlight Too", #selector(menuToggleBacklight), checked: settings.dimBacklight))
@@ -290,7 +340,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         and screen recordings still see the real desktop.
 
         Moving the real mouse or pressing a key brings the screen back; input synthesized by agents does not. \
-        Toggle anytime with ⌃⌥⌘L, or from scripts: open -g lightsout://dark (or light, toggle, awake/on, awake/off).
+        Toggle anytime with ⌃⌥⌘L, or from scripts: open -g lightsout://dark (or light, toggle, awake/on, awake/off). \
+        The Brightness sliders set each display's backlight; scripts can use lightsout://brightness/50 (0-100).
 
         Note: the session is unlocked while dark. Anyone at the keyboard can use it.
         """)

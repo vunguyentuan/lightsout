@@ -34,15 +34,33 @@ enum DisplayServices {
 }
 
 /// DDC/CI brightness control for external monitors on Apple Silicon, via the private IOAVService I2C API.
-/// Calls block for tens of milliseconds, so run them off the main thread.
+/// Calls block for tens of milliseconds, so run them on `DDC.queue`.
 enum DDC {
     struct Monitor {
         /// IORegistry entry ID of the DCPAVServiceProxy; stable for the lifetime of the connection.
         let id: UInt64
+        /// EDID identity from the monitor's framebuffer, for matching it to a CoreGraphics display. Nil when the
+        /// registry layout isn't recognized.
+        let identity: Identity?
         fileprivate let service: CFTypeRef
     }
 
+    struct Identity {
+        let name: String?
+        let vendor: UInt32
+        let product: UInt32
+        let serial: UInt32
+
+        func matches(_ display: CGDirectDisplayID) -> Bool {
+            CGDisplayVendorNumber(display) == vendor && CGDisplayModelNumber(display) == product
+                && CGDisplaySerialNumber(display) == serial
+        }
+    }
+
     static let brightnessVCP: UInt8 = 0x10
+
+    /// Every DDC transaction goes through this queue, so a read and a write never interleave on the I2C bus.
+    static let queue = DispatchQueue(label: "LightsOut.ddc")
 
     private typealias CreateFn = @convention(c) (CFAllocator?, io_service_t) -> Unmanaged<CFTypeRef>?
     private typealias I2CFn = @convention(c) (CFTypeRef, UInt32, UInt32, UnsafeMutableRawPointer, UInt32) -> IOReturn
@@ -68,6 +86,7 @@ enum DDC {
             return []
         }
         defer { IOObjectRelease(iterator) }
+        let identities = framebufferIdentities()
 
         var monitors: [Monitor] = []
         while case let entry = IOIteratorNext(iterator), entry != 0 {
@@ -79,9 +98,53 @@ enum DDC {
             }
             var id: UInt64 = 0
             IORegistryEntryGetRegistryEntryID(entry, &id)
-            monitors.append(Monitor(id: id, service: service))
+            monitors.append(Monitor(id: id, identity: identities[controllerName(of: entry)], service: service))
         }
         return monitors
+    }
+
+    /// The service proxy and its framebuffer live in different registry subtrees. They're tied together by the
+    /// display controller's name: the proxy's parent is "dispext0:dcpav-service-epic:0", the framebuffer's is "dispext0".
+    private static func controllerName(of proxy: io_registry_entry_t) -> String {
+        var parent: io_registry_entry_t = 0
+        guard IORegistryEntryGetParentEntry(proxy, kIOServicePlane, &parent) == KERN_SUCCESS else { return "" }
+        defer { IOObjectRelease(parent) }
+        return registryName(parent).split(separator: ":").first.map(String.init) ?? ""
+    }
+
+    /// EDID identities of the framebuffers, keyed by their controller's name.
+    private static func framebufferIdentities() -> [String: Identity] {
+        var result: [String: Identity] = [:]
+        for className in ["IOMobileFramebufferShim", "AppleCLCD2"] {
+            var iterator: io_iterator_t = 0
+            guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching(className), &iterator) == KERN_SUCCESS else {
+                continue
+            }
+            defer { IOObjectRelease(iterator) }
+            while case let entry = IOIteratorNext(iterator), entry != 0 {
+                defer { IOObjectRelease(entry) }
+                guard let attributes = IORegistryEntryCreateCFProperty(entry, "DisplayAttributes" as CFString, kCFAllocatorDefault, 0)?
+                        .takeRetainedValue() as? [String: Any],
+                      let product = attributes["ProductAttributes"] as? [String: Any],
+                      let vendor = product["LegacyManufacturerID"] as? NSNumber,
+                      let model = product["ProductID"] as? NSNumber,
+                      let serial = product["SerialNumber"] as? NSNumber
+                else { continue }
+                var parent: io_registry_entry_t = 0
+                guard IORegistryEntryGetParentEntry(entry, kIOServicePlane, &parent) == KERN_SUCCESS else { continue }
+                defer { IOObjectRelease(parent) }
+                result[registryName(parent)] = Identity(
+                    name: product["ProductName"] as? String,
+                    vendor: vendor.uint32Value, product: model.uint32Value, serial: serial.uint32Value)
+            }
+        }
+        return result
+    }
+
+    private static func registryName(_ entry: io_registry_entry_t) -> String {
+        var name = [CChar](repeating: 0, count: 128)
+        guard IORegistryEntryGetName(entry, &name) == KERN_SUCCESS else { return "" }
+        return String(cString: name)
     }
 
     static func read(_ monitor: Monitor, vcp: UInt8) -> (current: Int, max: Int)? {
