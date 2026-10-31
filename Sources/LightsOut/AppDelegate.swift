@@ -225,9 +225,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         brightnessViews.removeAll()
         if !brightness.displays.isEmpty {
             menu.addItem(.sectionHeader(title: "Brightness"))
+            let showNames = brightness.displays.count > 1
             for display in brightness.displays {
-                let view = BrightnessSliderView(name: display.name, level: display.level)
+                let view = BrightnessSliderView(name: showNames ? display.name : nil, level: display.level)
                 view.isEnabled = !darkener.isDark
+                view.toolTip = darkener.isDark ? "Brightness can't be changed while the screen is off"
+                    : showNames ? nil : display.name
                 view.onChange = { [weak self] level in self?.brightness.setLevel(level, for: display.id) }
                 brightnessViews[display.id] = view
                 let row = NSMenuItem()
