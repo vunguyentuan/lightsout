@@ -13,6 +13,7 @@ final class Settings {
             Key.wakeOnPhysicalInput: true,
             Key.dimBacklight: true,
             Key.simulateActivity: false,
+            Key.autoBrightness: false,
         ])
     }
 
@@ -22,6 +23,9 @@ final class Settings {
         static let wakeOnPhysicalInput = "wakeOnPhysicalInput"
         static let dimBacklight = "dimBacklight"
         static let simulateActivity = "simulateActivity"
+        static let autoBrightness = "autoBrightness"
+        static let luxCommand = "luxCommand"
+        static let autoBrightnessOffsets = "autoBrightnessOffsets"
     }
 
     /// Hold power assertions so the Mac never idles into display sleep, screen saver, or lock.
@@ -52,5 +56,23 @@ final class Settings {
     var simulateActivity: Bool {
         get { defaults.bool(forKey: Key.simulateActivity) }
         set { defaults.set(newValue, forKey: Key.simulateActivity) }
+    }
+
+    /// Follow the ambient light sensor reported by `luxCommand`.
+    var autoBrightness: Bool {
+        get { defaults.bool(forKey: Key.autoBrightness) }
+        set { defaults.set(newValue, forKey: Key.autoBrightness) }
+    }
+
+    /// Executable that streams lux readings, one per line. There's no UI for it; set it with
+    /// `defaults write com.vunguyen.LightsOut luxCommand /path/to/command`.
+    var luxCommand: String? {
+        defaults.string(forKey: Key.luxCommand)
+    }
+
+    /// Per-display brightness offsets from the auto-brightness curve, keyed by display name, learned from manual changes.
+    var autoBrightnessOffsets: [String: Double] {
+        get { defaults.dictionary(forKey: Key.autoBrightnessOffsets) as? [String: Double] ?? [:] }
+        set { defaults.set(newValue, forKey: Key.autoBrightnessOffsets) }
     }
 }

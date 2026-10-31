@@ -41,7 +41,24 @@ it, and the session stays unlocked past the 10-minute display-sleep timer with "
   open -g lightsout://toggle
   open -g lightsout://awake/on   # or awake/off
   open -g lightsout://brightness/50   # every display, 0-100 (ignored while dark)
+  open -g lightsout://auto-brightness/on   # or auto-brightness/off
   ```
+
+### Auto brightness from an external light sensor
+
+The Mac's own light sensor is in the lid, so it reads 0 lux in clamshell. Lights Out can follow any other sensor
+instead: point it at an executable that streams one reading per line to stdout, either `<lux>` or
+`<unix_epoch> <lux>` (for example, a script that reads an Android phone's sensor over adb):
+
+```sh
+defaults write com.vunguyen.LightsOut luxCommand /path/to/your-lux-command
+```
+
+**Auto Brightness** then appears under the brightness sliders and shows the current reading. Brightness follows a
+log curve of lux, averaged over a few seconds, and changes only in steps of 3% or more, so it doesn't flicker. Turning
+it on keeps each display at its current level, and from then on brightness follows changes in the light. Moving a
+slider teaches it your preferred level for that display. It pauses while the screen is dark, and holds the last
+level if the sensor stops reporting. The command is restarted if it exits.
 
 ### Optional permissions
 

@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let darkener = DisplayDarkener()
     private let input = InputWatcher()
     private let brightness = BrightnessController()
+    private lazy var autoBrightness = AutoBrightness(brightness: brightness)
 
     private var statusItem: NSStatusItem!
     private var hotKey: HotKey?
@@ -16,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var darkenedAt = Date.distantPast
     /// Sliders in the open menu, by display ID, so background reads can update them in place.
     private var brightnessViews: [String: BrightnessSliderView] = [:]
+    private weak var autoBrightnessItem: NSMenuItem?
 
     /// Ignore physical input for a moment after going dark, so the hand that clicked the menu doesn't undo it.
     private static let wakeGracePeriod: TimeInterval = 1.5
@@ -40,6 +42,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         brightness.onChange = { [weak self] in self?.brightnessChanged() }
         brightness.refresh()
+        autoBrightness.shouldApply = { [weak self] in self?.darkener.isDark == false }
+        autoBrightness.onApplied = { [weak self] in self?.brightnessChanged() }
+        autoBrightness.onStatusChange = { [weak self] in self?.updateAutoBrightnessItem() }
+        autoBrightness.setEnabled(settings.autoBrightness)
 
         hotKey = HotKey(keyCode: kVK_ANSI_L, modifiers: controlKey | optionKey | cmdKey) { [weak self] in
             self?.toggleDark()
@@ -63,11 +69,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         darkener.restoreForTermination()
+        autoBrightness.stop()
         awake.setActive(false)
     }
 
     /// `lightsout://dark`, `lightsout://light`, `lightsout://toggle`, `lightsout://awake/on`, `lightsout://awake/off`,
-    /// `lightsout://brightness/<0-100>`
+    /// `lightsout://brightness/<0-100>`, `lightsout://auto-brightness/on`, `lightsout://auto-brightness/off`
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls where url.scheme?.lowercased() == "lightsout" {
             switch (url.host?.lowercased(), url.path.lowercased()) {
@@ -82,6 +89,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     continue
                 }
                 setBrightness(Double(percent) / 100)
+            case ("auto-brightness", "/on"): setAutoBrightness(true)
+            case ("auto-brightness", "/off"): setAutoBrightness(false)
             default: NSLog("Lights Out: unrecognized URL \(url)")
             }
         }
@@ -93,6 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
             source.setEventHandler { [weak self] in
                 self?.darkener.restoreForTermination()
+                self?.autoBrightness.stop()
                 exit(0)
             }
             source.resume()
@@ -130,6 +140,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         brightness.setAllLevels(level)
+        for display in brightness.displays {
+            autoBrightness.userSetLevel(level, forDisplayNamed: display.name)
+        }
+    }
+
+    private func setAutoBrightness(_ on: Bool) {
+        settings.autoBrightness = on
+        autoBrightness.setEnabled(on)
+        if on, autoBrightness.command == nil {
+            NSLog("Lights Out: auto brightness needs a light sensor command (defaults write com.vunguyen.LightsOut luxCommand <path>)")
+        }
+    }
+
+    private func updateAutoBrightnessItem() {
+        guard let item = autoBrightnessItem else { return }
+        let status: String
+        switch autoBrightness.status {
+        case .off: status = ""
+        case .waiting: status = " · waiting for sensor"
+        case .reading(let lux): status = " · \(Int(lux.rounded())) lux"
+        }
+        item.title = "Auto Brightness" + status
+        item.state = settings.autoBrightness ? .on : .off
     }
 
     private func brightnessChanged() {
@@ -231,11 +264,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 view.isEnabled = !darkener.isDark
                 view.toolTip = darkener.isDark ? "Brightness can't be changed while the screen is off"
                     : showNames ? nil : display.name
-                view.onChange = { [weak self] level in self?.brightness.setLevel(level, for: display.id) }
+                view.onChange = { [weak self] level in
+                    self?.brightness.setLevel(level, for: display.id)
+                    self?.autoBrightness.userSetLevel(level, forDisplayNamed: display.name)
+                }
                 brightnessViews[display.id] = view
                 let row = NSMenuItem()
                 row.view = view
                 menu.addItem(row)
+            }
+            // Only offered once a light sensor command is configured; there's no built-in sensor to fall back on.
+            if autoBrightness.command != nil {
+                let autoItem = item("Auto Brightness", #selector(menuToggleAutoBrightness))
+                autoItem.toolTip = "Follows the light sensor. Moving a slider teaches it your preferred level."
+                menu.addItem(autoItem)
+                autoBrightnessItem = autoItem
+                updateAutoBrightnessItem()
             }
             menu.addItem(.separator())
         }
@@ -294,6 +338,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         input.noteActivity()
     }
 
+    @objc private func menuToggleAutoBrightness() {
+        setAutoBrightness(!settings.autoBrightness)
+    }
+
     @objc private func menuToggleWakeOnInput() {
         settings.wakeOnPhysicalInput.toggle()
     }
@@ -344,7 +392,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         Moving the real mouse or pressing a key brings the screen back; input synthesized by agents does not. \
         Toggle anytime with ⌃⌥⌘L, or from scripts: open -g lightsout://dark (or light, toggle, awake/on, awake/off). \
-        The Brightness sliders set each display's backlight; scripts can use lightsout://brightness/50 (0-100).
+        The Brightness sliders set each display's backlight; scripts can use lightsout://brightness/50 (0-100). \
+        Auto Brightness follows an external light sensor command, if one is configured (see the README).
 
         Note: the session is unlocked while dark. Anyone at the keyboard can use it.
         """)
