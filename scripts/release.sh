@@ -33,6 +33,7 @@ sign --preserve-metadata=entitlements "$SPARKLE/XPCServices/Downloader.xpc"
 sign "$SPARKLE/Autoupdate"
 sign "$SPARKLE/Updater.app"
 sign "$APP/Contents/Frameworks/Sparkle.framework"
+sign --identifier com.vunguyen.LightsOut.helper "$APP/Contents/MacOS/LightsOutHelper"
 sign "$APP"
 codesign --verify --strict --deep "$APP"
 

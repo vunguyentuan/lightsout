@@ -10,7 +10,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "LightsOut",
-            dependencies: [.product(name: "Sparkle", package: "Sparkle")],
+            dependencies: ["LidAwakeShared", .product(name: "Sparkle", package: "Sparkle")],
             path: "Sources/LightsOut",
             linkerSettings: [
                 .linkedFramework("AppKit"),
@@ -20,9 +20,20 @@ let package = Package(
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]),
             ]
         ),
+        .executableTarget(
+            name: "LightsOutHelper",
+            dependencies: ["LidAwakeShared"],
+            path: "Sources/LightsOutHelper",
+            linkerSettings: [.linkedFramework("IOKit")]
+        ),
+        .target(
+            name: "LidAwakeShared",
+            path: "Sources/LidAwakeShared",
+            linkerSettings: [.linkedFramework("Security")]
+        ),
         .testTarget(
             name: "LightsOutTests",
-            dependencies: ["LightsOut"],
+            dependencies: ["LightsOut", "LidAwakeShared"],
             path: "Tests/LightsOutTests"
         ),
     ]

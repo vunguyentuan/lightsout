@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let darkener = DisplayDarkener()
     private let input = InputWatcher()
     private let brightness = BrightnessController()
+    private let lidAwake = LidAwakeController()
     private lazy var autoBrightness = AutoBrightness(brightness: brightness)
 
     private var statusItem: NSStatusItem!
@@ -36,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
 
         awake.setActive(settings.keepAwake)
+        updateLidAwake()
 
         input.onPhysicalInput = { [weak self] in self?.physicalInputDetected() }
         input.start()
@@ -70,11 +72,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         darkener.restoreForTermination()
         autoBrightness.stop()
+        lidAwake.setWanted(false)
         awake.setActive(false)
     }
 
     /// `lightsout://dark`, `lightsout://light`, `lightsout://toggle`, `lightsout://awake/on`, `lightsout://awake/off`,
-    /// `lightsout://brightness/<0-100>`, `lightsout://auto-brightness/on`, `lightsout://auto-brightness/off`
+    /// `lightsout://brightness/<0-100>`, `lightsout://auto-brightness/on`, `lightsout://auto-brightness/off`,
+    /// `lightsout://lid-awake/on`, `lightsout://lid-awake/off`
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls where url.scheme?.lowercased() == "lightsout" {
             switch (url.host?.lowercased(), url.path.lowercased()) {
@@ -91,6 +95,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 setBrightness(Double(percent) / 100)
             case ("auto-brightness", "/on"): setAutoBrightness(true)
             case ("auto-brightness", "/off"): setAutoBrightness(false)
+            case ("lid-awake", "/on"): setStayAwakeWithLidClosed(true, interactive: false)
+            case ("lid-awake", "/off"): setStayAwakeWithLidClosed(false, interactive: false)
             default: NSLog("Lights Out: unrecognized URL \(url)")
             }
         }
@@ -130,7 +136,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func setKeepAwake(_ on: Bool) {
         settings.keepAwake = on
         awake.setActive(on)
+        updateLidAwake()
         updateIcon()
+    }
+
+    private func updateLidAwake() {
+        lidAwake.setWanted(awake.isActive && settings.stayAwakeWithLidClosed)
+    }
+
+    private func setStayAwakeWithLidClosed(_ on: Bool, interactive: Bool) {
+        settings.stayAwakeWithLidClosed = on
+        updateLidAwake()
+        guard on else { return }
+        switch lidAwake.status {
+        case .needsApproval:
+            NSLog("Lights Out: allow the helper in System Settings > General > Login Items & Extensions")
+            guard interactive else { return }
+            NSApp.activate(ignoringOtherApps: true)
+            let alert = NSAlert()
+            alert.messageText = "Allow Lights Out in System Settings"
+            alert.informativeText = """
+            A closed MacBook lid puts the Mac to sleep whenever no display is on, for example when you switch the \
+            external monitor off, and only a system setting (pmset disablesleep) can stop that. Lights Out sets it \
+            with a small helper that runs as root.
+
+            Turn on Lights Out under Login Items & Extensions > Allow in the Background. It takes effect a few \
+            seconds later.
+            """
+            alert.addButton(withTitle: "Open System Settings")
+            alert.addButton(withTitle: "Later")
+            if alert.runModal() == .alertFirstButtonReturn {
+                lidAwake.openSystemSettings()
+            }
+        case .unavailable(let reason):
+            NSLog("Lights Out: can't stay awake with the lid closed: \(reason)")
+            if interactive { showAlert("Can't stay awake with the lid closed", reason) }
+        default:
+            break
+        }
     }
 
     private func setBrightness(_ level: Double) {
@@ -188,6 +231,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if settings.simulateActivity, awake.isActive {
             nudgeIdleTimer()
         }
+
+        if lidAwake.wanted {
+            lidAwake.sync()
+        }
     }
 
     /// Posts a zero-distance mouse move, which resets the HID idle timer that some managed-Mac screen-saver
@@ -231,13 +278,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        let state = (awake.isActive ? "Awake & unlocked" : "Normal sleep rules")
-            + " · " + (darkener.isDark ? "screen off" : "screen on")
+        let awakeState = !awake.isActive ? "Normal sleep rules"
+            : lidAwake.status == .engaged || lidAwake.status == .disabledElsewhere ? "Awake & unlocked, lid can close"
+            : "Awake & unlocked"
+        let state = awakeState + " · " + (darkener.isDark ? "screen off" : "screen on")
         menu.addItem(disabledItem(state))
         menu.addItem(disabledItem("No physical input for \(formatDuration(input.physicalIdleSeconds))"))
         menu.addItem(.separator())
 
         menu.addItem(item("Keep Mac Awake & Unlocked", #selector(menuToggleAwake), checked: awake.isActive))
+        menu.addItem(lidAwakeItem())
         let darkItem = item(darkener.isDark ? "Turn Screen Back On" : "Lights Out Now", #selector(menuToggleDark))
         darkItem.keyEquivalent = "l"
         darkItem.keyEquivalentModifierMask = [.control, .option, .command]
@@ -305,6 +355,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(quit)
     }
 
+    private func lidAwakeItem() -> NSMenuItem {
+        let item = item("Stay Awake with Lid Closed", #selector(menuToggleLidAwake), checked: settings.stayAwakeWithLidClosed)
+        var tip = "On AC power, keeps the Mac awake with the lid closed even when no display is on."
+        if settings.stayAwakeWithLidClosed {
+            switch lidAwake.status {
+            case .off:
+                if !awake.isActive { tip += " Applies while Keep Mac Awake is on." }
+            case .needsApproval:
+                item.title += " · needs approval"
+                tip = "Allow Lights Out in System Settings > General > Login Items & Extensions > Allow in the Background."
+            case .engaged:
+                break
+            case .pausedOnBattery:
+                item.title += " · paused on battery"
+            case .disabledElsewhere:
+                tip = "Sleep is already turned off with pmset disablesleep, so Lights Out leaves it alone."
+            case .unavailable(let reason):
+                item.title += " · unavailable"
+                tip = reason
+            }
+        }
+        item.toolTip = tip
+        return item
+    }
+
     private func item(_ title: String, _ action: Selector, checked: Bool = false) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
@@ -327,6 +402,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func menuToggleAwake() {
         setKeepAwake(!awake.isActive)
+    }
+
+    @objc private func menuToggleLidAwake() {
+        setStayAwakeWithLidClosed(!settings.stayAwakeWithLidClosed, interactive: true)
     }
 
     @objc private func menuToggleDark() {
@@ -394,6 +473,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Toggle anytime with ⌃⌥⌘L, or from scripts: open -g lightsout://dark (or light, toggle, awake/on, awake/off). \
         The Brightness sliders set each display's backlight; scripts can use lightsout://brightness/50 (0-100). \
         Auto Brightness follows an external light sensor command, if one is configured (see the README).
+
+        Stay Awake with Lid Closed keeps the Mac running on AC power with the lid shut even when no display is on \
+        (say, the monitor is switched off), which macOS otherwise always sleeps. A small root helper turns on \
+        pmset disablesleep while Keep Mac Awake is on, and turns it off on battery or when Lights Out quits. \
+        While it's on, Sleep in the Apple menu does nothing. Scripts: lightsout://lid-awake/on (or off).
 
         Note: the session is unlocked while dark. Anyone at the keyboard can use it.
         """)

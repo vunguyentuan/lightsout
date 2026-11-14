@@ -34,5 +34,7 @@ jobs:
       - name: Check the bundle
         run: |
           test -x build/LightsOut.app/Contents/MacOS/LightsOut
+          test -x build/LightsOut.app/Contents/MacOS/LightsOutHelper
+          plutil -lint build/LightsOut.app/Contents/Library/LaunchDaemons/com.vunguyen.LightsOut.helper.plist
           test -d build/LightsOut.app/Contents/Frameworks/Sparkle.framework
           codesign --verify --deep build/LightsOut.app

@@ -14,6 +14,7 @@ final class Settings {
             Key.dimBacklight: true,
             Key.simulateActivity: false,
             Key.autoBrightness: false,
+            Key.stayAwakeWithLidClosed: false,
         ])
     }
 
@@ -24,6 +25,7 @@ final class Settings {
         static let dimBacklight = "dimBacklight"
         static let simulateActivity = "simulateActivity"
         static let autoBrightness = "autoBrightness"
+        static let stayAwakeWithLidClosed = "stayAwakeWithLidClosed"
         static let luxCommand = "luxCommand"
         static let autoBrightnessOffsets = "autoBrightnessOffsets"
     }
@@ -32,6 +34,13 @@ final class Settings {
     var keepAwake: Bool {
         get { defaults.bool(forKey: Key.keepAwake) }
         set { defaults.set(newValue, forKey: Key.keepAwake) }
+    }
+
+    /// While keeping the Mac awake on AC power, also keep it awake with the lid closed and no display on
+    /// (via the root helper and `pmset disablesleep`).
+    var stayAwakeWithLidClosed: Bool {
+        get { defaults.bool(forKey: Key.stayAwakeWithLidClosed) }
+        set { defaults.set(newValue, forKey: Key.stayAwakeWithLidClosed) }
     }
 
     /// Black out the screen after this many minutes without physical input. 0 disables it.

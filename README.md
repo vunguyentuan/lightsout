@@ -20,6 +20,7 @@ the screen locks. The obvious fixes conflict:
 | **Keep Mac Awake & Unlocked** | Holds `PreventUserIdleDisplaySleep` + `PreventUserIdleSystemSleep` power assertions and declares user activity every 30 s. The display never *idles* to sleep, so the screen saver and display-sleep lock never start. |
 | **Lights Out** | Turns the light off *without* telling macOS the display is off: every display's gamma table is set to black and the backlight goes to 0 (DisplayServices for built-in/Apple displays, DDC/CI for external monitors). Gamma is applied after the framebuffer, so **screenshots and screen recordings still see the real desktop**. Agents keep working normally. |
 | **Wake on physical input** | Real mouse, trackpad, or keyboard input brings the screen back. Input synthesized by agents doesn't: every `CGEvent.post` carries the poster's PID, and hardware events carry 0. |
+| **Stay Awake with Lid Closed** | A closed MacBook lid sleeps the Mac whenever no display is on, for example when you switch the external monitor off, and no power assertion can stop that. With this on, a small root helper turns on `pmset disablesleep` while Keep Awake is on and the Mac is on AC power. It turns it back off on battery and when Lights Out quits or crashes, and never touches a `disablesleep` you set yourself. |
 | **Auto Lights Out** | Goes dark after N minutes without *physical* input (default 10), replacing normal display sleep. |
 | **Safety** | macOS restores gamma automatically when the app exits, even on a crash. Backlight values are restored on quit or `SIGTERM`. After a hard crash they're restored on the next launch. |
 
@@ -42,6 +43,7 @@ it, and the session stays unlocked past the 10-minute display-sleep timer with "
   open -g lightsout://awake/on   # or awake/off
   open -g lightsout://brightness/50   # every display, 0-100 (ignored while dark)
   open -g lightsout://auto-brightness/on   # or auto-brightness/off
+  open -g lightsout://lid-awake/on   # or lid-awake/off
   ```
 
 ### Auto brightness from an external light sensor
@@ -61,6 +63,11 @@ slider teaches it your preferred level for that display. It pauses while the scr
 level if the sensor stops reporting. The command is restarted if it exits.
 
 ### Optional permissions
+
+- **Allow in the Background** (System Settings → General → Login Items & Extensions): needed once for
+  *Stay Awake with Lid Closed*. Its helper runs as root because `pmset disablesleep` is a system setting. It accepts
+  requests only from Lights Out signed by the same developer, can change nothing but that one setting, and exits
+  when Lights Out isn't using it. While it's holding the setting, Sleep in the Apple menu does nothing.
 
 - **Accessibility** (menu → *Allow Keyboard Detection…*): lets a physical key press wake the screen. Without it only
   the mouse/trackpad wakes it, though the hotkey always works. Also required by *Simulate Activity*.
@@ -86,8 +93,8 @@ survives rebuilds (override with `DEV_SIGN_IDENTITY=...`). Updates are delivered
 ## Limitations
 
 - **The session is unlocked while dark.** Anyone at the keyboard can use it. Use this where that's acceptable.
-- **Lid closed with no external display:** a closed MacBook lid sleeps the system regardless of assertions (needs
-  `sudo pmset -a disablesleep 1`, not done by this app). Clamshell with an external display and power works.
+- **Lid closed on battery:** *Stay Awake with Lid Closed* only works on AC power. On battery, a closed lid still
+  sleeps the Mac, so it can't overheat in a bag.
 - External-monitor backlight control needs DDC/CI (Apple Silicon only, and the monitor's DDC/CI setting enabled).
   Without it, the pixels are still black, but an LCD backlight stays on.
 - A manual lock (⌃⌘Q, Lock Screen) still locks. Lights Out only prevents *idle* locking.
