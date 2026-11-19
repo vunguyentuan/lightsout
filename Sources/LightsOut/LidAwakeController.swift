@@ -20,6 +20,8 @@ final class LidAwakeController {
     private let service = SMAppService.daemon(plistName: LidAwake.daemonPlistName)
     private let team = LidAwake.ownTeamIdentifier()
     private var connection: NSXPCConnection?
+    private var awaitingReplySince: Date?
+    private var lastRepair = Date.distantPast
     private(set) var wanted = false
     private(set) var status = Status.off
 
@@ -34,6 +36,7 @@ final class LidAwakeController {
         guard wanted else {
             connection?.invalidate()
             connection = nil
+            awaitingReplySince = nil
             status = .off
             return
         }
@@ -57,6 +60,12 @@ final class LidAwakeController {
                 return
             }
         }
+        if let since = awaitingReplySince, Date().timeIntervalSince(since) > 15,
+           Date().timeIntervalSince(lastRepair) > 60 {
+            repairRegistration()
+            return
+        }
+        if awaitingReplySince == nil { awaitingReplySince = Date() }
         let proxy = helperConnection().remoteObjectProxyWithErrorHandler { [weak self] error in
             DispatchQueue.main.async {
                 guard self?.wanted == true else { return }
@@ -66,6 +75,7 @@ final class LidAwakeController {
         proxy?.setLidClosedAwake(true) { [weak self] raw in
             DispatchQueue.main.async {
                 guard let self, self.wanted else { return }
+                self.awaitingReplySince = nil
                 switch LidAwakeState(rawValue: raw) ?? .off {
                 case .off: self.status = .off
                 case .engaged: self.status = .engaged
@@ -74,6 +84,24 @@ final class LidAwakeController {
                 }
             }
         }
+    }
+
+    /// "Enabled" but the helper never answers: launchd's job still points at a registration macOS dropped,
+    /// typically one made by another copy of the app (moved to /Applications, or a dev build). Registering
+    /// again from this copy replaces it.
+    private func repairRegistration() {
+        NSLog("Lights Out: helper isn't responding; registering it again")
+        lastRepair = Date()
+        awaitingReplySince = nil
+        connection?.invalidate()
+        connection = nil
+        do {
+            try service.unregister()
+            try service.register()
+        } catch {
+            NSLog("Lights Out: re-registering the helper failed: \(error.localizedDescription)")
+        }
+        status = service.status == .requiresApproval ? .needsApproval : .off
     }
 
     func openSystemSettings() {
