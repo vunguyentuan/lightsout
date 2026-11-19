@@ -124,6 +124,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             darkenedAt = Date()
         } else {
             darkener.restore()
+            // The restore can leave a display somewhere other than the cached level (a dropped DDC write, a monitor
+            // that reappeared while dark), and auto brightness only writes when its target differs from the cache.
+            // DDC.queue is serial, so this read lands after the restore's writes.
+            brightness.refresh()
             input.noteActivity()
         }
         updateIcon()

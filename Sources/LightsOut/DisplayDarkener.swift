@@ -13,8 +13,10 @@ final class DisplayDarkener {
     private(set) var isDark = false
 
     private var savedBuiltinBrightness: [CGDirectDisplayID: Float] = [:]
-    /// Only touched on `ddcQueue`.
-    private var savedDDCBrightness: [UInt64: Int] = [:]
+    /// Keyed by `restoreKey`. Only touched on `ddcQueue`.
+    private var savedDDCBrightness: [String: Int] = [:]
+    /// Registry IDs of monitors zeroed this time dark. Only touched on `ddcQueue`.
+    private var dimmedDDCMonitors: Set<UInt64> = []
     private let ddcQueue = DDC.queue
     private var enforcer: Timer?
     private var dimsBacklight = false
@@ -28,7 +30,7 @@ final class DisplayDarkener {
         dimsBacklight = dimBacklight
         enforce()
         if dimBacklight {
-            dimDDCMonitors()
+            dimDDCMonitors(initial: true)
         }
         // Night Shift, ColorSync, display reconfiguration, or auto-brightness can undo our changes; keep reasserting.
         enforcer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
@@ -58,7 +60,7 @@ final class DisplayDarkener {
         guard isDark else { return }
         enforce()
         if dimsBacklight {
-            dimDDCMonitors()
+            dimDDCMonitors(initial: false)
         }
     }
 
@@ -77,8 +79,9 @@ final class DisplayDarkener {
             ddcQueue.async {
                 let fallback = ddc.values.max() ?? 100
                 for monitor in DDC.externalMonitors() {
-                    // Registry IDs change across reboots; fall back to the brightest saved value.
-                    DDC.write(monitor, vcp: DDC.brightnessVCP, value: ddc[String(monitor.id)] ?? fallback)
+                    // A monitor without an EDID identity is keyed by registry ID, which changes across reboots;
+                    // fall back to the brightest saved value.
+                    DDC.write(monitor, vcp: DDC.brightnessVCP, value: ddc[Self.restoreKey(monitor)] ?? fallback)
                 }
                 defaults.removeObject(forKey: Self.pendingDDCKey)
             }
@@ -141,33 +144,52 @@ final class DisplayDarkener {
 
     // MARK: - DDC monitors
 
-    private func dimDDCMonitors() {
+    /// `initial` is the dimming that starts a dark period; later calls follow display reconfigurations, when a
+    /// monitor may come back under a new registry ID while still at the zero we wrote.
+    private func dimDDCMonitors(initial: Bool) {
         ddcQueue.async {
             for monitor in DDC.externalMonitors() {
-                if self.savedDDCBrightness[monitor.id] == nil {
+                let key = Self.restoreKey(monitor)
+                if self.savedDDCBrightness[key] == nil {
                     // Never zero a monitor whose current brightness we couldn't read; we'd have nothing to restore.
                     guard let reading = DDC.read(monitor, vcp: DDC.brightnessVCP) else { continue }
-                    self.savedDDCBrightness[monitor.id] = reading.current
-                    self.persistDDC()
+                    // Once dark, a zero reading is most likely our own write, seen under a key we didn't save it
+                    // by. Saving it would restore the monitor to zero; it gets the fallback on restore instead.
+                    if initial || reading.current > 0 {
+                        self.savedDDCBrightness[key] = reading.current
+                        self.persistDDC()
+                    }
                 }
+                self.dimmedDDCMonitors.insert(monitor.id)
                 DDC.write(monitor, vcp: DDC.brightnessVCP, value: 0)
             }
         }
     }
 
     private func restoreDDCBrightness() {
-        guard !savedDDCBrightness.isEmpty else { return }
+        defer {
+            savedDDCBrightness.removeAll()
+            dimmedDDCMonitors.removeAll()
+            UserDefaults.standard.removeObject(forKey: Self.pendingDDCKey)
+        }
+        guard let fallback = savedDDCBrightness.values.max() else { return }
         for monitor in DDC.externalMonitors() {
-            if let value = savedDDCBrightness[monitor.id] {
+            let saved = savedDDCBrightness[Self.restoreKey(monitor)]
+            // A monitor we zeroed without a trustworthy reading gets the brightest saved value.
+            if let value = saved ?? (dimmedDDCMonitors.contains(monitor.id) ? fallback : nil) {
                 DDC.write(monitor, vcp: DDC.brightnessVCP, value: value)
             }
         }
-        savedDDCBrightness.removeAll()
-        UserDefaults.standard.removeObject(forKey: Self.pendingDDCKey)
+    }
+
+    /// Identifies a monitor across reconnections: by EDID when known, since the registry ID changes whenever the
+    /// monitor is re-detected (wake, cable or input changes). Identical monitors without serial numbers share a key.
+    private static func restoreKey(_ monitor: DDC.Monitor) -> String {
+        guard let identity = monitor.identity else { return "id.\(monitor.id)" }
+        return "edid.\(identity.vendor).\(identity.product).\(identity.serial)"
     }
 
     private func persistDDC() {
-        let dict = Dictionary(uniqueKeysWithValues: savedDDCBrightness.map { (String($0.key), $0.value) })
-        UserDefaults.standard.set(dict, forKey: Self.pendingDDCKey)
+        UserDefaults.standard.set(savedDDCBrightness, forKey: Self.pendingDDCKey)
     }
 }
