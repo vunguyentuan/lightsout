@@ -4,19 +4,17 @@
     <title>Lights Out</title>
     <link>https://lightsout.madebyvu.com/appcast.xml</link>
     <item>
-      <title>Lights Out 1.1.0</title>
-      <pubDate>Sat, 14 Nov 2026 23:50:28 +0000</pubDate>
-      <sparkle:version>2</sparkle:version>
-      <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
+      <title>Lights Out 1.1.1</title>
+      <pubDate>Thu, 19 Nov 2026 04:22:20 +0000</pubDate>
+      <sparkle:version>3</sparkle:version>
+      <sparkle:shortVersionString>1.1.1</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
       <sparkle:fullReleaseNotesLink>https://github.com/vunguyentuan/lightsout/releases</sparkle:fullReleaseNotesLink>
       <description sparkle:format="markdown"><![CDATA[
-- **Stay Awake with Lid Closed:** on power, your MacBook keeps running with the lid shut even after you switch the external monitor off. Turn it on from the menu and allow Lights Out once in System Settings. On battery, or when Lights Out quits, a closed lid sleeps the Mac as usual.
-- **Brightness sliders** in the menu set each display's brightness, including external monitors that support DDC/CI.
-- **Auto Brightness** can follow an external light sensor, so brightness tracks the room even in clamshell, where the Mac's own sensor is covered.
-- Scripts can use `lightsout://lid-awake/on`, `lightsout://brightness/50` and `lightsout://auto-brightness/on`.
+- Fixes Stay Awake with Lid Closed not taking effect if Lights Out was moved, or replaced by another copy, after you allowed it in System Settings. It now sets itself up again on its own.
+- Fixes an external monitor sometimes staying at zero brightness, or at the wrong level with Auto Brightness on, when the screen came back on.
 ]]></description>
-      <enclosure url="https://github.com/vunguyentuan/lightsout/releases/download/v1.1.0/LightsOut.dmg" type="application/octet-stream" sparkle:edSignature="FIJmMX+U50zOmXQV0/39dSHyFMImqwijY8xvQywWFYlRC3N1aETljF72nHhcpbB9iFqjeurknj4XEGWOQXGxCg==" length="1759496" />
+      <enclosure url="https://github.com/vunguyentuan/lightsout/releases/download/v1.1.1/LightsOut.dmg" type="application/octet-stream" sparkle:edSignature="IGEON4nzhbG2J2R54ay5vF4yUECi1YEhyGlknN2mt5lS2awc087MfhIY6XoANyPl2bJkyjcDy4VEVnjdF1j/AA==" length="1762976" />
     </item>
   </channel>
 </rss>
